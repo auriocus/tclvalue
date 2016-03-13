@@ -1,0 +1,14 @@
+#@verbatim
+Package tclvalue0.1 {
+  Require {Use tcl8.6}
+  Source {Wget https://github.com/auriocus/tclvalue/archive/master.zip}
+  Configure {
+    Config [Get srcdir-sys]
+  }
+  Make {Run make}
+  Install {Run make install}
+  Clean {Run make clean}
+  Test {Run make test}
+}
+#@endverbatim
+
