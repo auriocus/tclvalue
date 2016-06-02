@@ -281,7 +281,11 @@ static int RegisterObjTypeCmd(ClientData clientData, Tcl_Interp *interp, int obj
 		
 		for (int n=0; n<4; n++) Tcl_DecrRefCount(cmdobj[n]);
 		
-		if (code!=TCL_OK) { return TCL_ERROR; }
+		if (code!=TCL_OK) { 
+			/* transfer error message to the main interp */
+			Tcl_SetObjResult(interp, Tcl_GetObjResult(slaveInterp));
+			return TCL_ERROR; 
+		}
 
 		/* we attach a cargo here */
 		TclValueType *type = (TclValueType *) ckalloc(sizeof(TclValueType));
