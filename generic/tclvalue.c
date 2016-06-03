@@ -390,7 +390,7 @@ static int GetIntRepCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl
 	/* If the object is already the target type, just return the intRep */
 	Tcl_ObjType *vtype = value -> typePtr;
 
-	if (vtype->freeIntRepProc == FreeTclValueInternalRep) {
+	if (vtype && (vtype->freeIntRepProc == FreeTclValueInternalRep)) {
 		/* It is one of our types */
 		Tcl_SetObjResult(interp, MasterObjCommand(value));
 		return TCL_OK;
@@ -416,7 +416,7 @@ static int GetSlaveIntRepCmd(ClientData clientData, Tcl_Interp *interp, int objc
 	/* If the object is already the target type, just return the intRep */
 	Tcl_ObjType *vtype = value -> typePtr;
 
-	if (vtype->freeIntRepProc == FreeTclValueInternalRep) {
+	if (vtype && (vtype->freeIntRepProc == FreeTclValueInternalRep)) {
 		/* It is one of our types */
 		Tcl_SetObjResult(interp, SlaveObjCommand(value));
 		return TCL_OK;
