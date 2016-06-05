@@ -10,13 +10,13 @@ tclvalue::interp eval {
 
 rename foreach __foreach
 proc foreach {var list args} {
-	set intRep [tclvalue::getSlaveIntRep $list]
-	if {[llength $var] != 1 || [llength $args] != 1 || $intRep eq {}} {
+	if {[llength $var] != 1 || [llength $args] != 1} {
 		# only intercept the three args form
 		tailcall ::__foreach $var $list {*}$args
 	}
 	
-	if {[catch {tclvalue::interp eval [list spawn $intRep iterate]} iterator]} {
+	set intRep [tclvalue::getSlaveIntRep $list]
+	if {$intRep eq {} || [catch {tclvalue::interp eval [list spawn $intRep iterate]} iterator]} {
 		# not iterable; std foreach
 		tailcall ::__foreach $var $list {*}$args
 	}
