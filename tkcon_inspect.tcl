@@ -6560,17 +6560,24 @@ namespace eval tkcon {
 				-columns $colconfig]
 	set inspectorw(vsb) [ttk::scrollbar $win.vsb -orient vertical   -command [list $inspectorw(tbl) yview]]
 	set inspectorw(hsb) [ttk::scrollbar $win.hsb -orient horizontal -command [list $inspectorw(tbl) xview]]
+	set inspectorw(skip) [ttk::checkbutton $win.skip -text "Skip internal globals" \
+	    -variable tkcon::inspectorw(skipinternals) -command tkcon::UpdateInspector]
+	set inspectorw(skipinternals) false
+	grid $inspectorw(skip) -sticky w
 	grid $inspectorw(tbl) $inspectorw(vsb) -sticky nsew
 	grid $inspectorw(hsb) -sticky nsew
-	grid rowconfigure $win 0 -weight 1
+	grid rowconfigure $win 1 -weight 1
 	grid columnconfigure $win 0 -weight 1
+	UpdateInspector
     }
 
     proc UpdateInspector {} {
 	variable inspectorw
 	$inspectorw(tbl) delete 0 end
 	set vars [EvalAttached {info vars}]
+	set internals {argv argv0 tcl_version tcl_interactive errorCode auto_path errorInfo unknown_handlers unknown_handler_order auto_index env tcl_pkgPath tcl_patchLevel argc tcl_libPath tcl_platform tcl_library _}
 	foreach v [lsort -dictionary $vars] {
+	    if {$inspectorw(skipinternals) && ($v in $internals)} { continue }
 	    if {![EvalAttached [list array exists $v]]} {
     		# skip arrays
 		set repr [EvalAttached "::tcl::unsupported::representation \[set [list $v]\]"]
@@ -6592,5 +6599,6 @@ namespace eval tkcon {
 }
 
 tkcon::AtSource
+update
 tkcon::InitInspector
 wm withdraw .
