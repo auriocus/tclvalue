@@ -1092,6 +1092,7 @@ proc ::tkcon::EvalCmd {w cmd} {
     }
     Prompt
     set PRIV(event) [EvalSlave history nextid]
+    UpdateInspector
 }
 
 ## ::tkcon::EvalSlave - evaluates the args in the associated slave
@@ -6541,6 +6542,55 @@ proc ::tkcon::AtSource {} {
 	}
     }
 }
-tkcon::AtSource
 
 package provide tkcon $::tkcon::VERSION
+
+# build the inspector
+package require tablelist_tile
+namespace eval tkcon {
+    
+    proc InitInspector {} {
+	variable inspectorw
+	set inspectorw(top) [toplevel .inspector]
+	set win $inspectorw(top)
+	set colconfig {0 "Name" left 0 "Type" left 0 "Pointer" left 0 "Refcount" left 0 "IntRep" left 0 "StringRep" left}
+	set inspectorw(tbl) [tablelist::tablelist $win.tbl  \
+				-xscrollcommand [list $win.hsb set] -yscrollcommand [list $win.vsb set] \
+				-showseparators yes -stretch end \
+				-columns $colconfig]
+	set inspectorw(vsb) [ttk::scrollbar $win.vsb -orient vertical   -command [list $inspectorw(tbl) yview]]
+	set inspectorw(hsb) [ttk::scrollbar $win.hsb -orient horizontal -command [list $inspectorw(tbl) xview]]
+	grid $inspectorw(tbl) $inspectorw(vsb) -sticky nsew
+	grid $inspectorw(hsb) -sticky nsew
+	grid rowconfigure $win 0 -weight 1
+	grid columnconfigure $win 0 -weight 1
+    }
+
+    proc UpdateInspector {} {
+	variable inspectorw
+	$inspectorw(tbl) delete 0 end
+	set vars [EvalAttached {info vars}]
+	foreach v [lsort -dictionary $vars] {
+	    if {![EvalAttached [list array exists $v]]} {
+    		# skip arrays
+		set repr [EvalAttached "::tcl::unsupported::representation \[set [list $v]\]"]
+		set re1 {^value is a (.+) with a refcount of (\d+), object pointer at ([^,]+), (internal representation ([^,]+), )?(no )?string representation( "(.*)")?$}
+		if {[regexp $re1 $repr -> type refcount objpointer _ intrep yesno _ srep]} {
+		    $inspectorw(tbl) insert end [list $v $type $objpointer $refcount $intrep $srep]
+		    if {$yesno eq {no }} {
+			# no stringrep. Colour cell
+			$inspectorw(tbl) cellconfigure last -bg red
+		    }
+		} else {
+		    puts "No match: $repr"
+		}
+	    } else {
+		# insert array as a tree - unimplemented
+	    }
+	}
+    }
+}
+
+tkcon::AtSource
+tkcon::InitInspector
+wm withdraw .
