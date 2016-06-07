@@ -433,7 +433,11 @@ static int InvalidateCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tc
 		return TCL_ERROR;
 	}
 
-	Tcl_InvalidateStringRep(objv[1]);
+	/* Bug in InvalidateStringRep? it can kill a pure string */
+	Tcl_Obj *value = objv[1];
+	if (value->typePtr) {
+		Tcl_InvalidateStringRep(objv[1]);
+	}
 	return TCL_OK;
 }
 
