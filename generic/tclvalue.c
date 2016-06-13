@@ -65,6 +65,8 @@ const Tcl_ObjType TclValueTclType_template = {
 	 */
 };
 
+static Tcl_Obj* copycmd; /* oo::copy */
+
 /* derive from Tcl_ObjType to attach a bunch of Tcl_Obj* */
 typedef struct {
 	Tcl_ObjType objType;
@@ -84,6 +86,7 @@ typedef struct {
 
 #define SlaveObjCommand(objPtr) (objPtr -> internalRep.twoPtrValue.ptr1)
 #define MasterObjCommand(objPtr) (objPtr -> internalRep.twoPtrValue.ptr2)
+#define IsScriptedType(typePtr) (typePtr && (typePtr -> freeIntRepProc == FreeTclValueInternalRep))
 
 static int SetTcl_ObjTypeFromAny(Tcl_Interp *interp, Tcl_Obj *objPtr) {
 	
@@ -91,14 +94,14 @@ static int SetTcl_ObjTypeFromAny(Tcl_Interp *interp, Tcl_Obj *objPtr) {
 		return TCL_OK;
 	}
 	
-	Tcl_ObjType *type =  Tcl_GetObjType(Tcl_GetStringFromObj(objPtr, NULL));
+	const Tcl_ObjType *type =  Tcl_GetObjType(Tcl_GetStringFromObj(objPtr, NULL));
 	
 	if (type) {
 		TclFreeIntRep(objPtr);
 		objPtr -> internalRep.ptrAndLongRep.ptr = type;
 		/* see if this is a type from our types by checking that the 
 		 * free proc refers to our destructor for types */
-		if (type -> freeIntRepProc == FreeTclValueInternalRep) {
+		if (IsScriptedType(type)) {
 			objPtr -> internalRep.ptrAndLongRep.value = 1;
 		} else {
 			objPtr -> internalRep.ptrAndLongRep.value = 0;
@@ -163,33 +166,28 @@ static Tcl_Obj* TclValueAliasCreate(TclValueType *vtype, Tcl_Obj *intRep) {
 
 /* call out into the Tcl scripts associated with this type 
  * stubs for now */
-static void		DupTclValueInternalRep(Tcl_Obj *srcPtr, Tcl_Obj *copyPtr) {
+static void	DupTclValueInternalRep(Tcl_Obj *srcPtr, Tcl_Obj *copyPtr) {
 	fprintf(stderr, "Duplicate %p -> %p\n", srcPtr, copyPtr);
 	/* for now just copy the intrep. Need support from the type */
 	TclValueType *vtype = (TclValueType*) srcPtr -> typePtr;
 	
 	Tcl_Obj *intRep = SlaveObjCommand(srcPtr);
 	
-	/* duplicate object. First construct empty, then call clone */
-	int code = invoke(vtype -> slaveInterp, vtype -> typeCmd, vtype -> constructor, NULL);
+	/* duplicate object. Call oo::copy */
+	int code = invoke(vtype -> slaveInterp, copycmd, intRep, NULL);
 	if (code != TCL_OK) {
 		/* phew.... */
-		fprintf(stderr, "Error in Standard constructor :( %s", Tcl_GetStringResult(vtype -> slaveInterp));
+		fprintf(stderr, "Error in cloning constructor :( %s", Tcl_GetStringResult(vtype -> slaveInterp));
 		/* crash... */
 		copyPtr -> typePtr = NULL;
 		return;
 	}
 	
+	fprintf(stderr, "Copied object :( %s", Tcl_GetStringResult(vtype -> slaveInterp));
+	
 	Tcl_Obj *newIntRep = Tcl_GetObjResult(vtype -> slaveInterp);
 	Tcl_IncrRefCount(newIntRep);
 
-	/* call the clone method on the new value */
-	code = invoke(vtype -> slaveInterp, newIntRep, vtype -> clonemethod, intRep);
-	if (code != TCL_OK) {
-		/* phew.... */
-		fprintf(stderr, "Error in clone method :( %s", Tcl_GetStringResult(vtype -> slaveInterp));
-	}
-	
 	Tcl_Obj *aliasCmd = TclValueAliasCreate(vtype, newIntRep);
 	Tcl_IncrRefCount(aliasCmd);
 
@@ -200,7 +198,7 @@ static void		DupTclValueInternalRep(Tcl_Obj *srcPtr, Tcl_Obj *copyPtr) {
 }
 
 
-static void		FreeTclValueInternalRep(Tcl_Obj *valuePtr) {
+static void	FreeTclValueInternalRep(Tcl_Obj *valuePtr) {
     /* call destructor of the object */
 	fprintf(stderr, "Free %p \n", valuePtr);
 	TclValueType *vtype = (TclValueType*)valuePtr -> typePtr;
@@ -227,7 +225,7 @@ static void		FreeTclValueInternalRep(Tcl_Obj *valuePtr) {
 	Tcl_DecrRefCount(aliasCmd);
 }
 
-static void		UpdateStringOfTclValue(Tcl_Obj *valuePtr) {
+static void	UpdateStringOfTclValue(Tcl_Obj *valuePtr) {
 	/* call the constructor with the current obj as a parameter */
 	fprintf(stderr, "Update string %p\n", valuePtr);
 	TclValueType *vtype = (TclValueType*) valuePtr -> typePtr;
@@ -263,7 +261,7 @@ static int RegisterObjTypeCmd(ClientData clientData, Tcl_Interp *interp, int obj
 	const char *typename = Tcl_GetString(typenameobj);
 	/* check if this objtype already exists, if yes, refuse */
 
-	Tcl_ObjType *type=Tcl_GetObjType(typename);
+	const Tcl_ObjType *type=Tcl_GetObjType(typename);
 	if (type != NULL) {
 		Tcl_SetObjResult(interp, Tcl_NewStringObj("type already exists", -1));
 		return TCL_ERROR;
@@ -305,7 +303,7 @@ static int RegisterObjTypeCmd(ClientData clientData, Tcl_Interp *interp, int obj
 		type->destructor = Tcl_NewStringObj("destroy", -1);
 		Tcl_IncrRefCount(type->constructor);
 
-		type->clonemethod = Tcl_NewStringObj("clone", -1);
+		type->clonemethod = Tcl_NewStringObj("<cloned>", -1);
 		Tcl_IncrRefCount(type->clonemethod);
 
 		type->reprmethod = Tcl_NewStringObj("repr", -1);
@@ -388,9 +386,9 @@ static int GetIntRepCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl
 	
 
 	/* If the object is already the target type, just return the intRep */
-	Tcl_ObjType *vtype = value -> typePtr;
+	const Tcl_ObjType *vtype = value -> typePtr;
 
-	if (vtype && (vtype->freeIntRepProc == FreeTclValueInternalRep)) {
+	if (IsScriptedType(vtype)) {
 		/* It is one of our types */
 		Tcl_SetObjResult(interp, MasterObjCommand(value));
 		return TCL_OK;
@@ -414,7 +412,7 @@ static int GetSlaveIntRepCmd(ClientData clientData, Tcl_Interp *interp, int objc
 	
 
 	/* If the object is already the target type, just return the intRep */
-	Tcl_ObjType *vtype = value -> typePtr;
+	const Tcl_ObjType *vtype = value -> typePtr;
 
 	if (vtype && (vtype->freeIntRepProc == FreeTclValueInternalRep)) {
 		/* It is one of our types */
@@ -494,7 +492,7 @@ static int NewCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj *
 	/* call the constructor with the excess args */
 	
 	int nargs = objc;
-	Tcl_Obj **cmdparts = (Tcl_Obj*)Tcl_Alloc(sizeof(Tcl_Obj*)*nargs);
+	Tcl_Obj **cmdparts = (Tcl_Obj**)Tcl_Alloc(sizeof(Tcl_Obj*)*nargs);
 
 	cmdparts[0]=vtype->typeCmd;
 	cmdparts[1]=vtype->constructor;
@@ -569,6 +567,9 @@ int Tclvalue_Init(Tcl_Interp* interp) {
 	Tcl_CreateObjCommand(interp, "tclvalue::invalidate", InvalidateCmd, slaveInterp, NULL);
 	Tcl_CreateObjCommand(interp, "tclvalue::unshare", UnshareCmd, slaveInterp, NULL);
 	Tcl_CreateObjCommand(interp, "tclvalue::new", NewCmd, slaveInterp, NULL);
+	
+	copycmd = Tcl_NewStringObj("oo::copy", -1);
+	Tcl_IncrRefCount(copycmd);
 	
 #ifdef LIST_INJECT
 	/* copy list object proc from list type */

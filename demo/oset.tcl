@@ -2,7 +2,7 @@ package require tclvalue
 
 tclvalue::register oset {
 	variable intrep
-	constructor {{list {}}} {
+	constructor {list} {
 		set intrep {}
 		foreach l $list { 
 			dict set intrep $l 1
@@ -19,10 +19,6 @@ tclvalue::register oset {
 
 	method inspect {} {
 		return $intrep
-	}
-
-	method clone {fromObj} {
-		set intrep [$fromObj inspect]
 	}
 
 	method insert {key} {
