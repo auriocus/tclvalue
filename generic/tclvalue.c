@@ -45,7 +45,8 @@ Tcl_ObjType Tcl_ObjTypeType = {
     SetTcl_ObjTypeFromAny		/* setFromAnyProc */
 };
 
-static void		DupTclValueInternalRep(Tcl_Obj *srcPtr, Tcl_Obj *copyPtr);
+static int		DupTclValueInternalRep(Tcl_Obj *srcPtr, Tcl_Obj *copyPtr);
+static void		DupTclValueInternalRepVoid(Tcl_Obj *srcPtr, Tcl_Obj *copyPtr);
 static void		FreeTclValueInternalRep(Tcl_Obj *listPtr);
 static void		UpdateStringOfTclValue(Tcl_Obj *listPtr);
 
@@ -57,7 +58,7 @@ static int		SetListFromTclValue(Tcl_Interp *interp, Tcl_Obj *objPtr);
 const Tcl_ObjType TclValueTclType_template = {
 	"TclValue",			/* name */\
 	FreeTclValueInternalRep,	/* freeIntRepProc */
-	DupTclValueInternalRep,	/* dupIntRepProc */
+	DupTclValueInternalRepVoid,	/* dupIntRepProc */
 	UpdateStringOfTclValue,	/* updateStringProc */
 	NULL		/* setFromAnyProc */
 	/* the conversion is done from Tcl code only
@@ -164,9 +165,9 @@ static Tcl_Obj* TclValueAliasCreate(TclValueType *vtype, Tcl_Obj *intRep) {
 	return Tcl_NewStringObj(aliasName, -1); 
 }
 
-/* call out into the Tcl scripts associated with this type 
- * stubs for now */
-static void	DupTclValueInternalRep(Tcl_Obj *srcPtr, Tcl_Obj *copyPtr) {
+/* call out into the Tcl scripts associated with this type */ 
+
+static int DupTclValueInternalRep(Tcl_Obj *srcPtr, Tcl_Obj *copyPtr) {
 	fprintf(stderr, "Duplicate %p -> %p\n", srcPtr, copyPtr);
 	/* for now just copy the intrep. Need support from the type */
 	TclValueType *vtype = (TclValueType*) srcPtr -> typePtr;
@@ -180,7 +181,7 @@ static void	DupTclValueInternalRep(Tcl_Obj *srcPtr, Tcl_Obj *copyPtr) {
 		fprintf(stderr, "Error in cloning constructor :( %s", Tcl_GetStringResult(vtype -> slaveInterp));
 		/* crash... */
 		copyPtr -> typePtr = NULL;
-		return;
+		return TCL_ERROR;
 	}
 	
 	fprintf(stderr, "Copied object :( %s", Tcl_GetStringResult(vtype -> slaveInterp));
@@ -195,6 +196,14 @@ static void	DupTclValueInternalRep(Tcl_Obj *srcPtr, Tcl_Obj *copyPtr) {
 	MasterObjCommand(copyPtr) = aliasCmd;
 	
 	copyPtr -> typePtr = (Tcl_ObjType*) vtype;
+	
+	return TCL_OK;
+}
+
+
+static void	DupTclValueInternalRepVoid(Tcl_Obj *srcPtr, Tcl_Obj *copyPtr) {
+	DupTclValueInternalRep(srcPtr, copyPtr);
+	/* Ignore return value for Tcl_DuplicateObj */
 }
 
 
@@ -455,7 +464,31 @@ static int UnshareCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_O
 
 	/* unshare object, if shared */
 	if (Tcl_IsShared(value)) {
-		value = Tcl_DuplicateObj(value);
+		/* check if this is a scripted type */
+		if (IsScriptedType(value->typePtr)) {
+			/* Simulate Tcl_DuplicateObj with our own types */
+			Tcl_Obj *newvalue=Tcl_NewObj();
+			int code = DupTclValueInternalRep(value, newvalue);
+			if (code != TCL_OK) {
+				/* transfer error message from slave interp */
+				Tcl_DecrRefCount(newvalue);
+				return TCL_ERROR;
+			}
+			/* copy a string rep, if present */
+			if (value->bytes) {
+				newvalue->bytes=ckalloc(value->length);
+				memcpy(value -> bytes, newvalue -> bytes, value ->length);
+			} else {
+				Tcl_InvalidateStringRep(newvalue);
+			}
+			
+			value=newvalue;
+
+		} else {
+			value = Tcl_DuplicateObj(value);
+		}
+	} else {
+		fprintf(stderr, "No need to duplicate %p\n", value);
 	}
 
 	Tcl_SetObjResult(interp, value);

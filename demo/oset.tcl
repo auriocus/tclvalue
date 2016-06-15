@@ -39,9 +39,7 @@ tclvalue::register oset {
 }
 
 proc oset_create {args} {
-	tclvalue::shimmer $args oset
-	tclvalue::invalidate $args
-	return $args
+	tclvalue::new oset $args
 }
 
 proc oset_insert {varname value} {

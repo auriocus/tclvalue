@@ -60,6 +60,11 @@ tclvalue::register sqlresult {
 		}
 		return -code break
 	}
+
+	method <cloned> {} {
+		# Not possible
+		return -code error "SQL results cannot be cloned"
+	}
 }
 
 proc connect {{dbfile test.db}} {
