@@ -9,6 +9,7 @@
 #include <string.h>
 #include <stdlib.h>
 
+
 /* Copy of this, because it is not exported (but uses only public functionality) */
 /*
  *----------------------------------------------------------------
@@ -88,6 +89,26 @@ typedef struct {
 #define SlaveObjCommand(objPtr) (objPtr -> internalRep.twoPtrValue.ptr1)
 #define MasterObjCommand(objPtr) (objPtr -> internalRep.twoPtrValue.ptr2)
 #define IsScriptedType(typePtr) (typePtr && (typePtr -> freeIntRepProc == FreeTclValueInternalRep))
+
+static Tcl_Interp * GetSlaveInterpFromObj(const Tcl_Obj *objPtr) {
+	const Tcl_ObjType * const typePtr = objPtr -> typePtr;
+	if (IsScriptedType(typePtr)) {
+		TclValueType *vt = (TclValueType*) typePtr;
+		return vt -> slaveInterp;
+	} else {
+		return NULL;
+	}
+}
+
+static Tcl_Interp * GetMasterInterpFromObj(const Tcl_Obj *objPtr) {
+	const Tcl_ObjType * const typePtr = objPtr -> typePtr;
+	if (IsScriptedType(typePtr)) {
+		TclValueType *vt = (TclValueType*) typePtr;
+		return vt -> masterInterp;
+	} else {
+		return NULL;
+	}
+}
 
 static int SetTcl_ObjTypeFromAny(Tcl_Interp *interp, Tcl_Obj *objPtr) {
 	
@@ -178,13 +199,13 @@ static int DupTclValueInternalRep(Tcl_Obj *srcPtr, Tcl_Obj *copyPtr) {
 	int code = invoke(vtype -> slaveInterp, copycmd, intRep, NULL);
 	if (code != TCL_OK) {
 		/* phew.... */
-		fprintf(stderr, "Error in cloning constructor :( %s", Tcl_GetStringResult(vtype -> slaveInterp));
+		fprintf(stderr, "Error in cloning constructor :( %s\n", Tcl_GetStringResult(vtype -> slaveInterp));
 		/* crash... */
 		copyPtr -> typePtr = NULL;
 		return TCL_ERROR;
 	}
 	
-	fprintf(stderr, "Copied object :( %s", Tcl_GetStringResult(vtype -> slaveInterp));
+	fprintf(stderr, "Copied object :) %s", Tcl_GetStringResult(vtype -> slaveInterp));
 	
 	Tcl_Obj *newIntRep = Tcl_GetObjResult(vtype -> slaveInterp);
 	Tcl_IncrRefCount(newIntRep);
@@ -440,11 +461,19 @@ static int InvalidateCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tc
 		return TCL_ERROR;
 	}
 
-	/* Bug in InvalidateStringRep? it can kill a pure string */
 	Tcl_Obj *value = objv[1];
-	if (value->typePtr) {
-		Tcl_InvalidateStringRep(objv[1]);
-	}
+	Tcl_ObjType * type = value -> typePtr;
+	
+	/* Bug in InvalidateStringRep? it can kill a pure string */
+	if (! type ) { return TCL_OK; }
+
+	/* Don't remove strings from types which can't produce string reps */
+
+	if (! type -> updateStringProc) { return TCL_OK; }
+	fprintf(stderr, "Type can produce a string rep: %p", type -> updateStringProc);
+	
+	Tcl_InvalidateStringRep(value);
+	
 	return TCL_OK;
 }
 
@@ -471,6 +500,7 @@ static int UnshareCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_O
 			int code = DupTclValueInternalRep(value, newvalue);
 			if (code != TCL_OK) {
 				/* transfer error message from slave interp */
+				Tcl_SetObjResult(interp, Tcl_GetObjResult(GetSlaveInterpFromObj(value)));
 				Tcl_DecrRefCount(newvalue);
 				return TCL_ERROR;
 			}

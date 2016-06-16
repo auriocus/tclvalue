@@ -1058,11 +1058,16 @@ proc ::tkcon::EvalCmd {w cmd} {
 		    set res $res2
 		}
 	    }
-	    catch {EvalAttached [list set _ $res]}
+	    # catch {EvalAttached [list set _ $res]}
 	    # just before converting to string, force a copy
 	    # so that we don't trigger shimmering of the original 
 	    # value
-	    set freshres [tclvalue::unshare res]; unset res
+	    if {[catch {tclvalue::unshare res} freshres]} {
+		# can't copy
+		set freshres "Uncopyable object $freshres"
+	    }
+	    
+	    unset res
 	    set maxlen $OPT(maxlinelen)
 	    set trailer ""
 	    if {($maxlen > 0) && ([string length $freshres] > $maxlen)} {

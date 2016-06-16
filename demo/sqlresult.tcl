@@ -61,7 +61,7 @@ tclvalue::register sqlresult {
 		return -code break
 	}
 
-	method <cloned> {} {
+	method <cloned> {args} {
 		# Not possible
 		return -code error "SQL results cannot be cloned"
 	}
