@@ -10,6 +10,9 @@ tclvalue::register xrange {
 	
 	method repr {} {
 		# We are forced to create a list/string
+		if {$to >= Inf} { 
+		    return -code error "Infinite list"
+		}
 		set result {}
 		for {set i $from} {$i<=$to} {incr i} {
 			lappend result $i

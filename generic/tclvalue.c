@@ -35,8 +35,7 @@
  */
 
 static int		SetTcl_ObjTypeFromAny(Tcl_Interp *interp, Tcl_Obj *objPtr);
-/* static void		UpdateStringOfTclValue(Tcl_Obj *listPtr); 
- * this is a read-only type, similar to bytecode or regexp */
+ /* this is a read-only type, similar to bytecode or regexp */
 
 Tcl_ObjType Tcl_ObjTypeType = {
     "Tcl_ObjType",		/* name */
@@ -49,7 +48,8 @@ Tcl_ObjType Tcl_ObjTypeType = {
 static int		DupTclValueInternalRep(Tcl_Obj *srcPtr, Tcl_Obj *copyPtr);
 static void		DupTclValueInternalRepVoid(Tcl_Obj *srcPtr, Tcl_Obj *copyPtr);
 static void		FreeTclValueInternalRep(Tcl_Obj *listPtr);
-static void		UpdateStringOfTclValue(Tcl_Obj *listPtr);
+static int		UpdateStringOfTclValue(Tcl_Obj *listPtr);
+static void		UpdateStringOfTclValueVoid(Tcl_Obj *listPtr);
 
 
 #ifdef LIST_INJECT
@@ -60,7 +60,7 @@ const Tcl_ObjType TclValueTclType_template = {
 	"TclValue",			/* name */\
 	FreeTclValueInternalRep,	/* freeIntRepProc */
 	DupTclValueInternalRepVoid,	/* dupIntRepProc */
-	UpdateStringOfTclValue,	/* updateStringProc */
+	UpdateStringOfTclValueVoid,	/* updateStringProc */
 	NULL		/* setFromAnyProc */
 	/* the conversion is done from Tcl code only
 	 * therefore there is no way to construct these types from C code
@@ -255,7 +255,17 @@ static void	FreeTclValueInternalRep(Tcl_Obj *valuePtr) {
 	Tcl_DecrRefCount(aliasCmd);
 }
 
-static void	UpdateStringOfTclValue(Tcl_Obj *valuePtr) {
+static void StringRepCopy(Tcl_Obj *destPtr, Tcl_Obj *srcPtr) {
+	int count;
+	const char *resultStr = Tcl_GetStringFromObj(srcPtr, &count);
+	
+	destPtr -> bytes = ckalloc(count+1);
+	destPtr -> length = count;
+	memcpy(destPtr -> bytes, resultStr, count);
+	destPtr -> bytes[count]=0; /* terminate, just in case... */
+}
+
+static int UpdateStringOfTclValue(Tcl_Obj *valuePtr) {
 	/* call the constructor with the current obj as a parameter */
 	fprintf(stderr, "Update string %p\n", valuePtr);
 	TclValueType *vtype = (TclValueType*) valuePtr -> typePtr;
@@ -264,20 +274,31 @@ static void	UpdateStringOfTclValue(Tcl_Obj *valuePtr) {
 	int code = invoke(vtype->slaveInterp, instanceCmd, vtype -> reprmethod, NULL);
 	
 	if (code != TCL_OK) {
-		/* it *may* not fail. Instead of panic, leave the error message 
-		 * as a replacement value in there for debugging */
+		/* Creating the string rep has failed. 
+		 * return an error */
+		return TCL_ERROR;
 	}
 
 	/* the result is the string rep. Too bad we cannot have
 	 * a list rep, nor make the output string proc write 
 	 * the string rep into our Tcl_Obj */
 	Tcl_Obj *result = Tcl_GetObjResult(vtype -> slaveInterp);
-	const char *resultStr = Tcl_GetStringFromObj(result, &valuePtr -> length);
-
-	valuePtr -> bytes = ckalloc(valuePtr->length+1);
-	memcpy(valuePtr -> bytes, resultStr, valuePtr->length);
-	valuePtr -> bytes[valuePtr->length]=0; /* terminate, just in case... */
+	StringRepCopy(valuePtr, result);
+	return TCL_OK;
 }
+
+static void	UpdateStringOfTclValueVoid(Tcl_Obj *valuePtr) {
+	int code = UpdateStringOfTclValue(valuePtr);
+	if (code != TCL_OK) {
+		/* There was an error. Copy the error message into the string rep */
+		const char *typename = valuePtr -> typePtr -> name;
+		const char *errstring = Tcl_GetStringResult(GetSlaveInterpFromObj(valuePtr));
+		Tcl_Obj *err = Tcl_ObjPrintf("Error creating string rep for type %s: %s", typename, errstring);
+		
+		StringRepCopy(valuePtr, err);
+	}
+}
+
 
 /* Register a new type */
 static int RegisterObjTypeCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj *const objv[]) {
@@ -455,6 +476,34 @@ static int GetSlaveIntRepCmd(ClientData clientData, Tcl_Interp *interp, int objc
 	}
 }
 
+static int ToStringCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj *const objv[]) {
+	if (objc != 2) {
+		Tcl_WrongNumArgs(interp, 1, objv, "value");
+		return TCL_ERROR;
+	}
+
+	Tcl_Obj *value = objv[1];
+	const Tcl_ObjType * type = value -> typePtr;
+	
+	if (IsScriptedType(type)) {
+		/* for scripted types, call the update string proc
+		 * and pass along errors */
+		int code = UpdateStringOfTclValue(value);
+		if (code != TCL_OK) {
+			/* Copy the error from the slave interp */
+			Tcl_SetObjResult(interp, Tcl_GetObjResult(GetSlaveInterpFromObj(value)));
+			return TCL_ERROR;
+		}
+		Tcl_SetObjResult(interp, value);
+		return TCL_OK;
+	} else {
+		Tcl_GetString(value);
+		/* simply force the string rep generation for non-scripted types */
+		Tcl_SetObjResult(interp, value);
+		return TCL_OK;
+	}
+}
+
 static int InvalidateCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj *const objv[]) {
 	if (objc != 2) {
 		Tcl_WrongNumArgs(interp, 1, objv, "value");
@@ -462,7 +511,7 @@ static int InvalidateCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tc
 	}
 
 	Tcl_Obj *value = objv[1];
-	Tcl_ObjType * type = value -> typePtr;
+	const Tcl_ObjType * type = value -> typePtr;
 	
 	/* Bug in InvalidateStringRep? it can kill a pure string */
 	if (! type ) { return TCL_OK; }
@@ -629,6 +678,7 @@ int Tclvalue_Init(Tcl_Interp* interp) {
 	Tcl_CreateObjCommand(interp, "tclvalue::getSlaveIntRep", GetSlaveIntRepCmd, slaveInterp, NULL); 
 	Tcl_CreateObjCommand(interp, "tclvalue::invalidate", InvalidateCmd, slaveInterp, NULL);
 	Tcl_CreateObjCommand(interp, "tclvalue::unshare", UnshareCmd, slaveInterp, NULL);
+	Tcl_CreateObjCommand(interp, "tclvalue::toString", ToStringCmd, slaveInterp, NULL);
 	Tcl_CreateObjCommand(interp, "tclvalue::new", NewCmd, slaveInterp, NULL);
 	
 	copycmd = Tcl_NewStringObj("oo::copy", -1);

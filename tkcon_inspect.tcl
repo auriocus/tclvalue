@@ -118,6 +118,7 @@ proc ::tkcon::Init {args} {
 	stdin		\#000000
 	stdout		\#0000FF
 	stderr		\#FF0000
+	valueerr	\#00A000
     } {
 	if {![info exists COLOR($key)]} { set COLOR($key) $default }
     }
@@ -796,7 +797,7 @@ proc ::tkcon::InitTab {w} {
     }
     $con configure -height $OPT(rows) -width $OPT(cols)
 
-    foreach col {prompt stdout stderr stdin proc} {
+    foreach col {prompt stdout stderr stdin valueerr proc} {
 	$con tag configure $col -foreground $COLOR($col)
     }
     $con tag configure var -background $COLOR(var)
@@ -1062,24 +1063,30 @@ proc ::tkcon::EvalCmd {w cmd} {
 	    # just before converting to string, force a copy
 	    # so that we don't trigger shimmering of the original 
 	    # value
-	    if {[catch {tclvalue::unshare res} freshres]} {
+	    if {[catch {tclvalue::unshare res} res]} {
 		# can't copy
-		set freshres "Uncopyable object $freshres"
+		set res "Uncopyable object: $res"
+		set code "valueerr"
+	    } elseif {[catch {tclvalue::toString $res} res]} {
+		set res "Unprintable object: $res"
+		set code "valueerr"
 	    }
-	    
-	    unset res
+
 	    set maxlen $OPT(maxlinelen)
 	    set trailer ""
-	    if {($maxlen > 0) && ([string length $freshres] > $maxlen)} {
+	    if {($maxlen > 0) && ([string length $res] > $maxlen)} {
 		# If we exceed maximum desired output line length, truncate
-		# the freshresult and add "...+${num}b" in error coloring
-		set trailer ...+[expr {[string length $freshres]-$maxlen}]b
-		set freshres [string range $res 0 $maxlen]
+		# the result and add "...+${num}b" in error coloring
+		set trailer ...+[expr {[string length $res]-$maxlen}]b
+		set res [string range $res 0 $maxlen]
 	    }
-	    if {$code} {
+
+	    if {$code eq "valueerr"} {
+		$w insert output $res\n$trailer valueerr
+	    } elseif {$code} {
 		if {$OPT(hoterrors)} {
 		    set tag [UniqueTag $w]
-		    $w insert output $freshres [list stderr $tag] \n$trailer stderr
+		    $w insert output $res [list stderr $tag] \n$trailer stderr
 		    $w tag bind $tag <Enter> \
 			    [list $w tag configure $tag -under 1]
 		    $w tag bind $tag <Leave> \
@@ -1088,10 +1095,10 @@ proc ::tkcon::EvalCmd {w cmd} {
 			    "if {!\[info exists tk::Priv(mouseMoved)\] || !\$tk::Priv(mouseMoved)} \
 			    {[list $OPT(edit) -attach [Attach] -type error -- $PRIV(errorInfo)]}"
 		} else {
-		    $w insert output $freshres\n$trailer stderr
+		    $w insert output $res\n$trailer stderr
 		}
-	    } elseif {$freshres ne ""} {
-		$w insert output $freshres stdout $trailer stderr \n stdout
+	    } elseif {$res ne ""} {
+		$w insert output $res stdout $trailer stderr \n stdout
 	    }
 	}
     }
