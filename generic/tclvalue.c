@@ -9,6 +9,11 @@
 #include <string.h>
 #include <stdlib.h>
 
+#ifdef DEBUG
+#define DEBUGPRINTF(f_, ...) fprintf(stderr, (f_), __VA_ARGS__)
+#else
+#define DEBUGPRINTF(...) ;
+#endif
 
 /* Copy of this, because it is not exported (but uses only public functionality) */
 /*
@@ -189,7 +194,7 @@ static Tcl_Obj* TclValueAliasCreate(TclValueType *vtype, Tcl_Obj *intRep) {
 /* call out into the Tcl scripts associated with this type */ 
 
 static int DupTclValueInternalRep(Tcl_Obj *srcPtr, Tcl_Obj *copyPtr) {
-	fprintf(stderr, "Duplicate %p -> %p\n", srcPtr, copyPtr);
+	DEBUGPRINTF("Duplicate %p -> %p\n", srcPtr, copyPtr);
 	/* for now just copy the intrep. Need support from the type */
 	TclValueType *vtype = (TclValueType*) srcPtr -> typePtr;
 	
@@ -199,13 +204,13 @@ static int DupTclValueInternalRep(Tcl_Obj *srcPtr, Tcl_Obj *copyPtr) {
 	int code = invoke(vtype -> slaveInterp, copycmd, intRep, NULL);
 	if (code != TCL_OK) {
 		/* phew.... */
-		fprintf(stderr, "Error in cloning constructor :( %s\n", Tcl_GetStringResult(vtype -> slaveInterp));
+		DEBUGPRINTF("Error in cloning constructor :( %s\n", Tcl_GetStringResult(vtype -> slaveInterp));
 		/* crash... */
 		copyPtr -> typePtr = NULL;
 		return TCL_ERROR;
 	}
 	
-	fprintf(stderr, "Copied object :) %s", Tcl_GetStringResult(vtype -> slaveInterp));
+	DEBUGPRINTF("Copied object :) %s", Tcl_GetStringResult(vtype -> slaveInterp));
 	
 	Tcl_Obj *newIntRep = Tcl_GetObjResult(vtype -> slaveInterp);
 	Tcl_IncrRefCount(newIntRep);
@@ -230,7 +235,7 @@ static void	DupTclValueInternalRepVoid(Tcl_Obj *srcPtr, Tcl_Obj *copyPtr) {
 
 static void	FreeTclValueInternalRep(Tcl_Obj *valuePtr) {
     /* call destructor of the object */
-	fprintf(stderr, "Free %p \n", valuePtr);
+	DEBUGPRINTF("Free %p \n", valuePtr);
 	TclValueType *vtype = (TclValueType*)valuePtr -> typePtr;
 	Tcl_Obj *intRep = SlaveObjCommand(valuePtr);
 	Tcl_Obj *aliasCmd = MasterObjCommand(valuePtr);
@@ -239,7 +244,7 @@ static void	FreeTclValueInternalRep(Tcl_Obj *valuePtr) {
 	int code = invoke(vtype->slaveInterp, intRep, vtype->destructor, NULL);
 	if (code != TCL_OK) {
 		/* phew - may not fail */
-		fprintf(stderr, "Ouch: %s\n", Tcl_GetStringResult(vtype->slaveInterp));
+		DEBUGPRINTF("Ouch: %s\n", Tcl_GetStringResult(vtype->slaveInterp));
 		return;
 	}
 	
@@ -267,7 +272,7 @@ static void StringRepCopy(Tcl_Obj *destPtr, Tcl_Obj *srcPtr) {
 
 static int UpdateStringOfTclValue(Tcl_Obj *valuePtr) {
 	/* call the constructor with the current obj as a parameter */
-	fprintf(stderr, "Update string %p\n", valuePtr);
+	DEBUGPRINTF("Update string %p\n", valuePtr);
 	TclValueType *vtype = (TclValueType*) valuePtr -> typePtr;
 	Tcl_Obj *instanceCmd = SlaveObjCommand(valuePtr);
 	
@@ -373,7 +378,7 @@ static int ShimmerCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_O
 	Tcl_Obj *value = objv[1];
 	Tcl_Obj *typeObj = objv[2];
 
-	fprintf(stderr, "Shimmer %p\n", value);
+	DEBUGPRINTF("Shimmer %p\n", value);
 	/* first attempt to convert the 2nd argument to value type */
 	if (SetTcl_ObjTypeFromAny(interp, typeObj) != TCL_OK) {
 		return TCL_ERROR;
@@ -433,7 +438,7 @@ static int GetIntRepCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl
 	}
 	Tcl_Obj *value = objv[1];
 
-	fprintf(stderr, "GetIntRep %p\n", value);
+	DEBUGPRINTF("GetIntRep %p\n", value);
 	
 
 	/* If the object is already the target type, just return the intRep */
@@ -459,7 +464,7 @@ static int GetSlaveIntRepCmd(ClientData clientData, Tcl_Interp *interp, int objc
 	}
 	Tcl_Obj *value = objv[1];
 
-	fprintf(stderr, "GetSlaveIntRep %p\n", value);
+	DEBUGPRINTF("GetSlaveIntRep %p\n", value);
 	
 
 	/* If the object is already the target type, just return the intRep */
@@ -519,7 +524,7 @@ static int InvalidateCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tc
 	/* Don't remove strings from types which can't produce string reps */
 
 	if (! type -> updateStringProc) { return TCL_OK; }
-	fprintf(stderr, "Type can produce a string rep: %p", type -> updateStringProc);
+	DEBUGPRINTF("Type can produce a string rep: %p", type -> updateStringProc);
 	
 	Tcl_InvalidateStringRep(value);
 	
@@ -567,7 +572,7 @@ static int UnshareCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_O
 			value = Tcl_DuplicateObj(value);
 		}
 	} else {
-		fprintf(stderr, "No need to duplicate %p\n", value);
+		DEBUGPRINTF("No need to duplicate %p\n", value);
 	}
 
 	Tcl_SetObjResult(interp, value);
@@ -599,7 +604,7 @@ static int NewCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj *
 	
 	Tcl_Obj* result=Tcl_NewObj();
 
-	fprintf(stderr, "New %p\n", result);
+	DEBUGPRINTF("New %p\n", result);
 	
 	/* call the constructor with the excess args */
 	

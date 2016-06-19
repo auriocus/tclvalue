@@ -51,11 +51,6 @@ proc oset_insert {varname value} {
 	set var $oset
 }
 
-proc inspect {v} {
-	puts [tcl::unsupported::representation $v]
-}
-
-
 proc test {} {
 	set test [oset_create a b c a]
 	oset_insert test f
