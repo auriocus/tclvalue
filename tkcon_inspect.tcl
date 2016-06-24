@@ -6566,7 +6566,7 @@ namespace eval tkcon {
 	variable OPT
 	set inspectorw(top) [toplevel .inspector]
 	set win $inspectorw(top)
-	set colconfig {0 "Name" left 0 "Type" left 0 "Pointer" left 0 "Refcount" left 0 "IntRep" left 0 "StringRep" left}
+	set colconfig {0 "Name" left 0 "Type" left 0 "StringRep" left 0 "IntRep" left 0 "Refcount" left 0 "Pointer" left}
 	set inspectorw(tbl) [tablelist::tablelist $win.tbl  \
 				-xscrollcommand [list $win.hsb set] -yscrollcommand [list $win.vsb set] \
 				-showseparators yes -stretch end \
@@ -6601,10 +6601,10 @@ namespace eval tkcon {
 		if {[regexp $re1 $repr -> type refcount objpointer _ intrep yesno _ srep]} {
 		    # the refcount is +1 because of the call to tcl::unsupported::representation
 		    incr refcount -1 
-		    $inspectorw(tbl) insert end [list $v $type $objpointer $refcount $intrep $srep]
+		    set row [$inspectorw(tbl) insert end [list $v $type $srep $intrep $refcount $objpointer]]
 		    if {$yesno eq {no }} {
 			# no stringrep. Colour cell
-			$inspectorw(tbl) cellconfigure last -bg red
+			$inspectorw(tbl) cellconfigure $row,2 -bg #FFFFA0
 		    }
 		} else {
 		    puts "No match: $repr"
