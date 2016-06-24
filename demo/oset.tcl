@@ -25,12 +25,16 @@ tclvalue::register oset {
 		dict set intrep $key 1
 	}
 
+	method remove {key} {
+		dict unset intrep $key
+	}
+
 	method merge {fromObj} {
 		set intrep [dict merge $intrep [$fromObj inspect]]
 	}
 
 	method iterate {} {
-		yield [info coroutine]
+		yield
 		dict for {value _} $intrep {
 			yield $value
 		}
@@ -49,6 +53,27 @@ proc oset_insert {varname value} {
 	$intRep insert $value
 	tclvalue::invalidate $oset
 	set var $oset
+}
+
+proc oset_remove {varname value} {
+	upvar 1 $varname var
+	set oset [tclvalue::unshare var]
+	set intRep [tclvalue::shimmer $oset oset]
+	$intRep remove $value
+	tclvalue::invalidate $oset
+	set var $oset
+}
+
+proc oset_merge {value1 value2} {
+	tclvalue::shimmer $value1 oset
+	set uvalue1 [tclvalue::unshare value1]
+	set oset1 [tclvalue::getIntRep $uvalue1]
+	tclvalue::shimmer $value2 oset
+	set oset2 [tclvalue::getSlaveIntRep $value2]
+
+	$oset1 merge $oset2
+	tclvalue::invalidate $uvalue1
+	return $uvalue1
 }
 
 proc test {} {
