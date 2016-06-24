@@ -6584,6 +6584,7 @@ namespace eval tkcon {
 	if {$OPT(font) ne {}} {
 	    $inspectorw(tbl) configure -font $OPT(font)
 	}
+	InitQuoteMap
 	UpdateInspector
     }
 
@@ -6600,9 +6601,15 @@ namespace eval tkcon {
 		set re1 {^value is a (.+) with a refcount of (\d+), object pointer at ([^,]+), (internal representation ([^,]+), )?(no )?string representation( "(.*)")?$}
 		if {[regexp $re1 $repr -> type refcount objpointer _ intrep yesno _ srep]} {
 		    # the refcount is +1 because of the call to tcl::unsupported::representation
-		    incr refcount -1 
+		    incr refcount -1
+		    set validsrep [expr {$yesno ne {no }}]
+		    if {$validsrep} {
+			set srep [dblquote $srep]
+		    } else {
+			set srep ""
+		    } 
 		    set row [$inspectorw(tbl) insert end [list $v $type $srep $intrep $refcount $objpointer]]
-		    if {$yesno eq {no }} {
+		    if {! $validsrep} {
 			# no stringrep. Colour cell
 			$inspectorw(tbl) cellconfigure $row,2 -bg #FFFFA0
 		    }
@@ -6613,6 +6620,34 @@ namespace eval tkcon {
 		# insert array as a tree - unimplemented
 	    }
 	}
+    }
+
+   proc InitQuoteMap {} {
+	variable QuoteMap
+	# print a string s with double quotes
+	# and escapes
+	set qchars "\"\{\}"
+	set QuoteMap {}
+	foreach c [split $qchars ""] {
+	    dict set QuoteMap $c "\\$c"
+	}
+
+	# ASCII control codes
+	for {set i 0} {$i<0x20} {incr i} {
+	    dict set QuoteMap [format %c $i] [format "\\u%04x" $i]
+	}
+	
+	# overwrite escape sequences for 
+	foreach {meta esc} {\n \\n \t \\t \a \\a \r \\r} {
+	    dict set QuoteMap $meta $esc
+	}
+    }
+    
+    proc dblquote {s} {
+	variable QuoteMap
+	# print a string s with double quotes
+	# and escapes
+	string map $QuoteMap $s
     }
 }
 
