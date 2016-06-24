@@ -1063,11 +1063,11 @@ proc ::tkcon::EvalCmd {w cmd} {
 	    # just before converting to string, force a copy
 	    # so that we don't trigger shimmering of the original 
 	    # value
-	    if {[catch {tclvalue::unshare res} res]} {
+	    if {[catch {tclvalue::unshare res} newres]} {
 		# can't copy
-		set res "Uncopyable object: $res"
+		set res "Uncopyable object: $newres"
 		set code "valueerr"
-	    } elseif {[catch {tclvalue::toString $res} res]} {
+	    } elseif {[catch {tclvalue::toString $newres} res]} {
 		set res "Unprintable object: $res"
 		set code "valueerr"
 	    }
@@ -6563,6 +6563,7 @@ namespace eval tkcon {
     
     proc InitInspector {} {
 	variable inspectorw
+	variable OPT
 	set inspectorw(top) [toplevel .inspector]
 	set win $inspectorw(top)
 	set colconfig {0 "Name" left 0 "Type" left 0 "Pointer" left 0 "Refcount" left 0 "IntRep" left 0 "StringRep" left}
@@ -6580,6 +6581,9 @@ namespace eval tkcon {
 	grid $inspectorw(hsb) -sticky nsew
 	grid rowconfigure $win 1 -weight 1
 	grid columnconfigure $win 0 -weight 1
+	if {$OPT(font) ne {}} {
+	    $inspectorw(tbl) configure -font $OPT(font)
+	}
 	UpdateInspector
     }
 
@@ -6595,6 +6599,8 @@ namespace eval tkcon {
 		set repr [EvalAttached "::tcl::unsupported::representation \[set [list $v]\]"]
 		set re1 {^value is a (.+) with a refcount of (\d+), object pointer at ([^,]+), (internal representation ([^,]+), )?(no )?string representation( "(.*)")?$}
 		if {[regexp $re1 $repr -> type refcount objpointer _ intrep yesno _ srep]} {
+		    # the refcount is +1 because of the call to tcl::unsupported::representation
+		    incr refcount -1 
 		    $inspectorw(tbl) insert end [list $v $type $objpointer $refcount $intrep $srep]
 		    if {$yesno eq {no }} {
 			# no stringrep. Colour cell

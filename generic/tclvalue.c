@@ -8,7 +8,7 @@
 #define PACKAGE_NAME  "tclvalue"
 #include <string.h>
 #include <stdlib.h>
-
+#define DEBUG
 #ifdef DEBUG
 #define DEBUGPRINTF(f_, ...) fprintf(stderr, (f_), __VA_ARGS__)
 #else
