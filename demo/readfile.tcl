@@ -1,33 +1,18 @@
 package require tclvalue
 
-proc inspect {v} {
-	puts [tcl::unsupported::representation $v]
-}
-
 tclvalue::register asciifile {
 	variable fd
 	variable filename
-	constructor {args} {
-		set fd {}
-		set filename {}
-	}
-
-	destructor {
-		my closeifopen
-	}
-
-	method closeifopen {} {
-		if {$fd ne {}} { catch {close $fd} }
-		set fd {}
-	}
-
 	
-	method openfile {fn} {
+	constructor {fn} {
 		set filename $fn
-		my closeifopen
 		set fd [open $filename r]
 	}
 	
+	destructor {
+		if {$fd ne {}} { catch {close $fd} }
+		set fd {}
+	}
 
 	method repr {} {
 		# We are forced to read the whole file
@@ -49,19 +34,22 @@ tclvalue::register asciifile {
 		}
 		return -code break
 	}
+
+	method <cloned> {args} {
+		return -code error "Can't copy file content"
+	}
 }
 
 
 proc readln {fn} {
-	set dummy "unimportant"
-	set myfile [tclvalue::unshare dummy]
-	set intRep [tclvalue::shimmer $myfile asciifile]
-	$intRep openfile $fn
-	tclvalue::invalidate $myfile
-	return $myfile
+	tclvalue::new asciifile $fn
 }
 	
-proc testfile {{fn Makefile}} {
+proc testfile {{fn {demo/readfile.tcl}}} {
+	proc inspect {v} {
+		puts [tcl::unsupported::representation $v]
+	}
+
 	set lines [readln $fn]
 	foreach line $lines {
 		puts $line
