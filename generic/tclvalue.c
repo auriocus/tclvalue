@@ -561,7 +561,8 @@ static int UnshareCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_O
 			/* copy a string rep, if present */
 			if (value->bytes) {
 				newvalue->bytes=ckalloc(value->length);
-				memcpy(value -> bytes, newvalue -> bytes, value ->length);
+				newvalue->length=value->length;
+				memcpy(newvalue -> bytes, value -> bytes, value ->length);
 			} else {
 				Tcl_InvalidateStringRep(newvalue);
 			}
