@@ -1,9 +1,10 @@
 tclvalue::interp eval {
 	# library code: spawn proc
-	set cocounter 0
+	set ::cocounter 0
 	proc spawn {args} {
-		set coname ::Coro[incr cocounter]
+		set coname ::Coro[incr ::cocounter]
 		coroutine $coname {*}$args
+		puts $coname
 		return $coname
 	}
 }

@@ -99,7 +99,7 @@ proc testForeach {} {
 	puts [tcl::unsupported::representation $o]
 }
 
-test
+#test
 
-testForeach
+#testForeach
 
